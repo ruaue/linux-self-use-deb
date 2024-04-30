@@ -17,11 +17,12 @@ env:
   PKGVER: 2
 
 jobs:
-  apt:
-    name: Setup dependencies
+  build:
+    name: build kernel deb 
     runs-on: ubuntu-latest
     steps:
-      - run: |
+     - name : prepare environment 
+       run: |
             sudo apt-get update \
             && sudo apt-get install -y build-essential \
                  bc kmod cpio flex libncurses-dev \
@@ -30,25 +31,21 @@ jobs:
                  libpci-dev libiberty-dev autoconf \
                  debhelper lz4
                  
-      - name: Checkout main repo
-        needs: apt
-        steps:
+     - name: Checkout main repo
+       run:
          - uses: actions/checkout@v4
            with:
            submodules: true
 
-      - name: Download linux kernel source
-        needs: [apt, checkout]
-        steps:
-        - run: |
+     - name: Download linux kernel source
+       run: |
             wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${{ env.KERNEL_STABLE_VER }}.tar.xz \
             && tar xvf linux-${{ env.KERNEL_STABLE_VER }}.tar.xz
 
-      - name: Apply patches
-        needs: [apt, checkout, download_source]
-        steps:
-          - working-directory: linux-${{ env.KERNEL_STABLE_VER }}
-            run: |
+     - name: Apply patches
+       with:
+          working-directory: linux-${{ env.KERNEL_STABLE_VER }}
+       run: |
              patch -Np1 -i ../patches/kernel_compiler_patch/more-uarches-for-kernel-6.8-rc4+.patch
              for i in ../patches/xanmod/linux-6.8.y-xanmod/net/netfilter/*FLOWOFFLOAD*.patch \
                       ../patches/xanmod/linux-6.8.y-xanmod/net/tcp/bbr3/*.patch \
@@ -67,12 +64,11 @@ jobs:
              patch -Np1 -i ../patches/bcm-fullcone/0001-netfilter-nat-add-brcm-fullcone-support.patch
              patch -Np1 -i ../patches/bcm-fullcone/0002-netfilter-nat-add-brcm-fullcone-nft-support.patch
 
-      - name: Setup config
-        needs: [apt, checkout, download_source, apply_patch]
-        strategy:
-         fail-fast: false
-         max-parallel: 2
-         matrix:
+     - name: Setup config
+       strategy:
+       fail-fast: false
+       max-parallel: 2
+       matrix:
            config: [generic, cloud]
            steps:
             - working-directory: linux-${{ env.KERNEL_STABLE_VER }}
@@ -140,7 +136,6 @@ jobs:
                          -e SECURITY_YAMA
 
             - name: Build Kernel
-              needs: [apt, checkout, download_source, apply_patch, setup_config]
               strategy:
                 fail-fast: false
                 max-parallel: 1
@@ -151,41 +146,40 @@ jobs:
                  env:
                   DEBEMAIL: "love4taylor <i@love4taylor.com>"
                   KDEB_COMPRESS: "xz"
-         run: |
-          mkdir -p ../${{ matrix.config }}
-          make \
-            KBUILD_OUTPUT=../${{ matrix.config }} \
-            KCONFIG_CONFIG=../config.${{ matrix.config }} \
-            olddefconfig
-          make \
-            KBUILD_OUTPUT=../${{ matrix.config }} \
-            KCONFIG_CONFIG=../config.${{ matrix.config }} \
-            KDEB_PKGVERSION=$(make kernelversion)-${{ env.PKGVER }} \
-            -j`nproc` \
-            bindeb-pkg
+              run: |
+               mkdir -p ../${{ matrix.config }}
+               make \
+                KBUILD_OUTPUT=../${{ matrix.config }} \
+                KCONFIG_CONFIG=../config.${{ matrix.config }} \
+                olddefconfig
+               make \
+                KBUILD_OUTPUT=../${{ matrix.config }} \
+                KCONFIG_CONFIG=../config.${{ matrix.config }} \
+                KDEB_PKGVERSION=$(make kernelversion)-${{ env.PKGVER }} \
+                -j`nproc` \
+                bindeb-pkg
 
-          - name: Upload config
-            needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
-            strategy:
-            fail-fast: false
-            max-parallel: 2
-            matrix:
-            config: [generic, cloud]
-            steps:
-             - uses: actions/upload-artifact@v4
-               with:
+            - name: Upload config
+              strategy:
+              fail-fast: false
+              max-parallel: 2
+              matrix:
+              config: [generic, cloud]
+              steps:
+              - uses: actions/upload-artifact@v4
+                with:
                 name: config.${{ matrix.config }}
                 path: config.${{ matrix.config }}
 
-          - name: Upload deb
-            needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
-            strategy:
-            fail-fast: false
-            max-parallel: 2
-            matrix:
-            config: [generic, cloud]
-            steps:
-            uses: actions/upload-artifact@v4
+            - name: Upload deb
+              needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
+              strategy:
+              fail-fast: false
+              max-parallel: 2
+              matrix:
+              config: [generic, cloud]
+              steps:
+              uses: actions/upload-artifact@v4
               with:
                name: deb.${{ matrix.config }}
                path: |
@@ -194,21 +188,21 @@ jobs:
                 linux-libc-dev_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
                 compression-level: 0
 
-          - name: Release
-            needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
-            strategy:
-            fail-fast: false
-            matrix:
-            config: [generic, cloud]
-            steps:
-            - if: ${{ github.event.inputs.release != 'none' }}
-            uses: ncipollo/release-action@v1
-            with:
-             allowUpdates: true
-          artifacts: |
-            linux-image-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-            linux-headers-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-            linux-libc-dev_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-          prerelease: ${{ github.event.inputs.release == 'pre-release' }}
-          makeLatest: ${{ github.event.inputs.release == 'release' }}
-          tag: ${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}
+            - name: Release
+              needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
+              strategy:
+              fail-fast: false
+              matrix:
+              config: [generic, cloud]
+              steps:
+              - if: ${{ github.event.inputs.release != 'none' }}
+              uses: ncipollo/release-action@v1
+              with:
+                allowUpdates: true
+              artifacts: |
+               linux-image-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
+               linux-headers-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
+               linux-libc-dev_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
+              prerelease: ${{ github.event.inputs.release == 'pre-release' }}
+              makeLatest: ${{ github.event.inputs.release == 'release' }}
+              tag: ${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}
