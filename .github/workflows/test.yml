@@ -32,10 +32,9 @@ jobs:
                  debhelper lz4
                  
      - name: Checkout main repo
-       run: |
-         - uses: actions/checkout@v4
-           with:
-           submodules: true
+       uses: actions/checkout@v4
+       with:
+        submodules: true
 
      - name: Download linux kernel source
        run: |
