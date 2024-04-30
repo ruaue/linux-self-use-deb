@@ -1,4 +1,4 @@
-name: test Build stable kernel package
+name: Build stable kernel package
 
 on:
   workflow_dispatch:
