@@ -17,8 +17,8 @@ env:
   PKGVER: 2
 
 jobs:
-  prepare:
-    name: Prepare kernel source
+  build:
+    name: Build kernel deb
     runs-on: ubuntu-latest
     steps:
      - name : Prepare environment 
