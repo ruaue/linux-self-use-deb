@@ -45,6 +45,7 @@ jobs:
        env:
         working-directory: linux-${{ env.KERNEL_STABLE_VER }}
        run: |
+             cd linux-${{ env.KERNEL_STABLE_VER }}
              patch -Np1 -i ../patches/kernel_compiler_patch/more-uarches-for-kernel-6.8-rc4+.patch
              for i in ../patches/xanmod/linux-6.8.y-xanmod/net/netfilter/*FLOWOFFLOAD*.patch \
                       ../patches/xanmod/linux-6.8.y-xanmod/net/tcp/bbr3/*.patch \
