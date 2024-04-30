@@ -137,6 +137,7 @@ jobs:
           DEBEMAIL: "love4taylor <i@love4taylor.com>"
           KDEB_COMPRESS: "xz"
        run: |
+          cd linux-${{ env.KERNEL_STABLE_VER }}
           mkdir -p ../cloud
           make \
             KBUILD_OUTPUT=../cloud \
