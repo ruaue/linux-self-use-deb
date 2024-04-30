@@ -32,7 +32,7 @@ jobs:
                  debhelper lz4
                  
      - name: Checkout main repo
-       run:
+       run: |
          - uses: actions/checkout@v4
            with:
            submodules: true
@@ -43,8 +43,8 @@ jobs:
             && tar xvf linux-${{ env.KERNEL_STABLE_VER }}.tar.xz
 
      - name: Apply patches
-       with:
-          working-directory: linux-${{ env.KERNEL_STABLE_VER }}
+       env:
+        working-directory: linux-${{ env.KERNEL_STABLE_VER }}
        run: |
              patch -Np1 -i ../patches/kernel_compiler_patch/more-uarches-for-kernel-6.8-rc4+.patch
              for i in ../patches/xanmod/linux-6.8.y-xanmod/net/netfilter/*FLOWOFFLOAD*.patch \
@@ -64,145 +64,4 @@ jobs:
              patch -Np1 -i ../patches/bcm-fullcone/0001-netfilter-nat-add-brcm-fullcone-support.patch
              patch -Np1 -i ../patches/bcm-fullcone/0002-netfilter-nat-add-brcm-fullcone-nft-support.patch
 
-     - name: Setup config
-       strategy:
-       fail-fast: false
-       max-parallel: 2
-       matrix:
-           config: [generic, cloud]
-           steps:
-            - working-directory: linux-${{ env.KERNEL_STABLE_VER }}
-              run: |
-               scripts/config --file ../config.${{ matrix.config }} \
-                         --set-str LOCALVERSION "-egoist-${{ matrix.config }}"
-               scripts/config --file ../config.${{ matrix.config }} \
-                         -e IKCONFIG \
-                         -e IKCONFIG_PROC
-               scripts/config --file ../config.${{ matrix.config }} \
-                         -d GENERIC_CPU \
-                         -e GENERIC_CPU2
-          
-               scripts/config --file ../config.${{ matrix.config }} \
-                         -e NETFILTER_XT_TARGET_FLOWOFFLOAD
-          
-               scripts/config --file ../config.${{ matrix.config }} \
-                         -m TCP_CONG_CUBIC \
-                         -d DEFAULT_CUBIC \
-                         -e TCP_CONG_BBR \
-                         -e DEFAULT_BBR \
-                         --set-str DEFAULT_TCP_CONG bbr
-        
-               scripts/config --file ../config.${{ matrix.config }} \
-                         -m NET_SCH_FQ_CODEL \
-                         -e NET_SCH_FQ \
-                         -d DEFAULT_FQ_CODEL \
-                         -e DEFAULT_FQ \
-                         --set-str DEFAULT_NET_SCH fq
-        
-                scripts/config --file ../config.${{ matrix.config }} \
-                         -m TCP_CONG_BRUTAL
-          
-                scripts/config --file ../config.${{ matrix.config }} \
-                         -e ZPOOL \
-                         -e ZSWAP \
-                         -e ZSWAP_DEFAULT_ON \
-                         -d ZSWAP_COMPRESSOR_DEFAULT_LZO \
-                         -e ZSWAP_COMPRESSOR_DEFAULT_ZSTD \
-                         -e ZSWAP_ZPOOL_DEFAULT_ZSMALLOC \
-                         -e ZBUD \
-                         -m Z3FOLD \
-                         -e ZSMALLOC
-          
-                scripts/config --file ../config.${{ matrix.config }} \
-                         -m NTFS3_FS \
-                         -e NTFS3_LZX_XPRESS \
-                         -e NTFS3_FS_POSIX_ACL
-          
-                scripts/config --file ../config.${{ matrix.config }} \
-                         -m SMB_SERVER \
-                         -e SMB_SERVER_SMBDIRECT \
-                         -e SMB_SERVER_CHECK_CAP_NET_ADMIN \
-                         -e SMB_SERVER_KERBEROS5
-          
-                scripts/config --file ../config.${{ matrix.config }} \
-                         -e SECURITY_SELINUX \
-                         -e SECURITY_SELINUX_BOOTPARAM \
-                         -e SECURITY_SMACK \
-                         -e SECURITY_SMACK_BRINGUP \
-                         -e SECURITY_SMACK_NETFILTER \
-                         -e SECURITY_SMACK_APPEND_SIGNALS \
-                         -e SECURITY_TOMOYO \
-                         -e SECURITY_APPARMOR \
-                         -e SECURITY_YAMA
-
-            - name: Build Kernel
-              strategy:
-                fail-fast: false
-                max-parallel: 1
-                matrix:
-                config: [generic, cloud]
-              steps:
-               - working-directory: linux-${{ env.KERNEL_STABLE_VER }}
-                 env:
-                  DEBEMAIL: "love4taylor <i@love4taylor.com>"
-                  KDEB_COMPRESS: "xz"
-              run: |
-               mkdir -p ../${{ matrix.config }}
-               make \
-                KBUILD_OUTPUT=../${{ matrix.config }} \
-                KCONFIG_CONFIG=../config.${{ matrix.config }} \
-                olddefconfig
-               make \
-                KBUILD_OUTPUT=../${{ matrix.config }} \
-                KCONFIG_CONFIG=../config.${{ matrix.config }} \
-                KDEB_PKGVERSION=$(make kernelversion)-${{ env.PKGVER }} \
-                -j`nproc` \
-                bindeb-pkg
-
-            - name: Upload config
-              strategy:
-              fail-fast: false
-              max-parallel: 2
-              matrix:
-              config: [generic, cloud]
-              steps:
-              - uses: actions/upload-artifact@v4
-                with:
-                name: config.${{ matrix.config }}
-                path: config.${{ matrix.config }}
-
-            - name: Upload deb
-              needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
-              strategy:
-              fail-fast: false
-              max-parallel: 2
-              matrix:
-              config: [generic, cloud]
-              steps:
-              uses: actions/upload-artifact@v4
-              with:
-               name: deb.${{ matrix.config }}
-               path: |
-                linux-image-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-                linux-headers-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-                linux-libc-dev_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-                compression-level: 0
-
-            - name: Release
-              needs: [apt, checkout, download_source, apply_patch, setup_config, build_kernel]
-              strategy:
-              fail-fast: false
-              matrix:
-              config: [generic, cloud]
-              steps:
-              - if: ${{ github.event.inputs.release != 'none' }}
-              uses: ncipollo/release-action@v1
-              with:
-                allowUpdates: true
-              artifacts: |
-               linux-image-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-               linux-headers-${{ env.KERNEL_STABLE_VER }}-egoist-${{ matrix.config }}_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-               linux-libc-dev_${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}_amd64.deb
-              prerelease: ${{ github.event.inputs.release == 'pre-release' }}
-              makeLatest: ${{ github.event.inputs.release == 'release' }}
-              tag: ${{ env.KERNEL_STABLE_VER }}-${{ env.PKGVER }}
+    
