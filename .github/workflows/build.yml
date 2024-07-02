@@ -59,7 +59,6 @@ jobs:
               patch -Np1 -i "../patches/clearlinux/${i}"
              done
              patch -Np1 -i ../patches/cachy/6.9/0001-aes-crypto.patch
-             #patch -Np1 -i ../patches/cachy/6.9/0002-amd-pstate.patch
              patch -Np1 -i ../patches/cachy/6.9/0007-ksm.patch
              patch -Np1 -i ../patches/cachy/6.9/0010-zstd.patch
              patch -Np1 -i ../patches/tcp-brutal/0001-net-tcp_brutal-make-it-as-a-built-in-kernel-module.patch
