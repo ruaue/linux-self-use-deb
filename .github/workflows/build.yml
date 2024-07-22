@@ -13,8 +13,9 @@ on:
 
 env:
   HOME: /home/runner/work
-  KERNEL_STABLE_VER: 6.9.8
+  KERNEL_STABLE_VER: 6.9.10
   PKGVER: 1
+  LLVM_VER: 18.1.8
 
 jobs:
   build:
@@ -29,7 +30,11 @@ jobs:
                  libelf-dev libssl-dev dwarves bison \
                  gawk openssl libssl-dev dkms libudev-dev \
                  libpci-dev libiberty-dev autoconf \
-                 debhelper lz4
+                 debhelper lz4 \
+            && if [ ! -d ~/llvm-${{ env.LLVM_VER }}-x86_64 ]; then
+                 curl -O https://mirrors.edge.kernel.org/pub/tools/llvm/files/llvm-${{ env.LLVM_VER }}-x86_64.tar.gz \
+                 && tar avxf llvm-${{ env.LLVM_VER }}-x86_64.tar.gz -C ~/
+               fi
                  
      - name: Checkout main repo
        uses: actions/checkout@v4
